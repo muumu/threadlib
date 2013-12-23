@@ -60,7 +60,7 @@ int main(int argc, char** argv) {
     WorkerThread<lock_based_queue<BenchMarkTask> > bm_worker;
     MyTimer timer;
     timer.start("lock_based_queue<BenchMarkTask>");
-    for(int i=0; i<1000000; ++i) {
+    for(int i=0; i<loop_size; ++i) {
         bm_worker.submit(BenchMarkTask());
     }
     bm_worker.join();
@@ -70,7 +70,7 @@ int main(int argc, char** argv) {
 
     WorkerThread<lock_free_queue<BenchMarkTask> > bm_worker_lf;
     timer.start("lock_free_queue<BenchMarkTask>");
-    for(int i=0; i<1000000; ++i) {
+    for(int i=0; i<loop_size; ++i) {
         bm_worker_lf.submit(BenchMarkTask());
     }
     bm_worker_lf.join();
@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
 
     WorkerThread<boost_lock_free_queue<BenchMarkTask*> > bm_worker_p;
     timer.start("boost_lock_free_queue<BenchMarkTask*>");
-    for(int i=0; i<1000000; ++i) {
+    for(int i=0; i<loop_size; ++i) {
         bm_worker_p.submit(new BenchMarkTask);
     }
     bm_worker_p.join();
