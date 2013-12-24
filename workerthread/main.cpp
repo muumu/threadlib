@@ -57,21 +57,42 @@ int main(int argc, char** argv) {
 
     int loop_size = 1000000;
 
-    WorkerThread<lock_based_queue<BenchMarkTask> > bm_worker;
+    BenchMarkTask::result_type result_lb;
+
+    WorkerThread<lock_based_queue<BenchMarkTask> > bm_worker_lb;
+    //WorkerThread<lock_based_queue<decltype(boost::bind<void>(BenchMarkTask(), boost::ref(result_lb)))> > bm_worker_lb;
     MyTimer timer;
     timer.start("lock_based_queue<BenchMarkTask>");
     for(int i=0; i<loop_size; ++i) {
-        bm_worker.submit(BenchMarkTask());
+        bm_worker_lb.submit(BenchMarkTask());
+        //bm_worker_lb.submit(boost::bind<void>(BenchMarkTask(), boost::ref(result_lb)));
     }
-    bm_worker.join();
-    std::cout << "counter: " << bm_worker.getResult().counter << std::endl;
-    std::cout << "result: " << bm_worker.getResult().value() << std::endl;
+    bm_worker_lb.join();
+    std::cout << "counter: " << bm_worker_lb.getResult().counter << std::endl;
+    std::cout << "result: " << bm_worker_lb.getResult().value() << std::endl;
     timer.stop();
 
+    BenchMarkTask::result_type result_lbg;
+    WorkerThreadGroup<lock_based_queue<BenchMarkTask> > bm_worker_lbg;
+    //WorkerThread<lock_free_queue<decltype(boost::bind<void>(BenchMarkTask(), boost::ref(result_lf)))> > bm_worker_lf;
+    timer.start("lock_based_queue<BenchMarkTask> group");
+    for(int i=0; i<loop_size; ++i) {
+        bm_worker_lbg.submit(BenchMarkTask());
+        //bm_worker.submit(boost::bind<void>(BenchMarkTask(), boost::ref(result_lf)));
+    }
+    bm_worker_lbg.join();
+    std::cout << "counter: " << bm_worker_lb.getResult().counter << std::endl;
+    std::cout << "result: " << bm_worker_lb.getResult().value() << std::endl;
+    timer.stop();
+
+
+    BenchMarkTask::result_type result_lf;
     WorkerThread<lock_free_queue<BenchMarkTask> > bm_worker_lf;
+    //WorkerThread<lock_free_queue<decltype(boost::bind<void>(BenchMarkTask(), boost::ref(result_lf)))> > bm_worker_lf;
     timer.start("lock_free_queue<BenchMarkTask>");
     for(int i=0; i<loop_size; ++i) {
         bm_worker_lf.submit(BenchMarkTask());
+        //bm_worker.submit(boost::bind<void>(BenchMarkTask(), boost::ref(result_lf)));
     }
     bm_worker_lf.join();
     timer.stop();

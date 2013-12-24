@@ -28,6 +28,9 @@ public:
         }
         queue_.pop(value);
     }
+    void set_done() {
+        push(nullptr);
+    }
 
 };
 
