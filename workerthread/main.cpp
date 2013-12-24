@@ -81,8 +81,8 @@ int main(int argc, char** argv) {
         //bm_worker.submit(boost::bind<void>(BenchMarkTask(), boost::ref(result_lf)));
     }
     bm_worker_lbg.join();
-    std::cout << "counter: " << bm_worker_lb.getResult().counter << std::endl;
-    std::cout << "result: " << bm_worker_lb.getResult().value() << std::endl;
+    std::cout << "counter: " << bm_worker_lbg.getResult().counter << std::endl;
+    std::cout << "result: " << bm_worker_lbg.getResult().value() << std::endl;
     timer.stop();
 
 
