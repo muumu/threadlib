@@ -30,7 +30,9 @@ public:
 
     template <class T>
     void submit(T task) {
+        //boost::asio::io_service::strand st(io_service_);
         io_service_.post(task);
+        //io_service_.post(st.wrap(std::ref(task)));
     }
 
     void join() {

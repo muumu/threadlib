@@ -26,6 +26,7 @@ private:
 };
 
 class BenchMarkTask {
+    int seed_;
 public:
     class result_type {
         int value_;
@@ -40,11 +41,12 @@ public:
         }
     };
 
-    BenchMarkTask() {}
+    BenchMarkTask() {
+        seed_ = rand()%64;
+    }
     void operator()(result_type& r) {
-        //for(int i=0; i<1000000; ++i) {
         for(int i=0; i<1000; ++i) {
-            r.set((r.value() + rand()%32) & 255);
+            r.set((r.value() + seed_) & 255);
         }
         ++r.counter;
     }
@@ -58,7 +60,8 @@ public:
 
 int main(int argc, char** argv) {
 
-    int loop_size = 4;
+    int loop_size = 1000000;
+    const int thread_size = std::thread::hardware_concurrency();
 
     //BenchMarkTask::result_type result_lb;
     WorkerThread<lock_based_queue<BenchMarkTask> > bm_worker_lb;
@@ -75,7 +78,7 @@ int main(int argc, char** argv) {
     timer.stop();
 
     //BenchMarkTask::result_type result_lbg;
-    WorkerThreadGroup<lock_based_queue<BenchMarkTask> > bm_worker_lbg;
+    WorkerThreadGroup<lock_based_queue<BenchMarkTask> > bm_worker_lbg(thread_size);
     //WorkerThread<lock_free_queue<decltype(boost::bind<void>(BenchMarkTask(), boost::ref(result_lf)))> > bm_worker_lf;
     timer.start("lock_based_queue<BenchMarkTask> group");
     for(int i=0; i<loop_size; ++i) {
@@ -86,6 +89,17 @@ int main(int argc, char** argv) {
     std::cout << "counter: " << bm_worker_lbg.getResult().counter << std::endl;
     std::cout << "result: " << bm_worker_lbg.getResult().value() << std::endl;
     timer.stop();
+
+    WorkerThreadGroup<lock_based_queue<BenchMarkTask*> > bm_worker_lbpg(thread_size);
+    timer.start("lock_based_queue<BenchMarkTask*> group");
+    for(int i=0; i<loop_size; ++i) {
+        bm_worker_lbpg.submit(new BenchMarkTask);
+    }
+    bm_worker_lbpg.join();
+    std::cout << "counter: " << bm_worker_lbpg.getResult().counter << std::endl;
+    std::cout << "result: " << bm_worker_lbpg.getResult().value() << std::endl;
+    timer.stop();
+
 
 
     //BenchMarkTask::result_type result_lf;
@@ -120,7 +134,7 @@ int main(int argc, char** argv) {
 
 
     boost::asio::io_service io_service;
-    boost_asio_thread_pool tp(io_service, 1);
+    boost_asio_thread_pool tp(io_service, thread_size);
     BenchMarkTask::result_type result;
 
     timer.start("boost_asio");

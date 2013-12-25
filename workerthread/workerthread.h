@@ -41,7 +41,7 @@ public:
         container_(container), result_(result) {
     }
     void operator()() {
-        value_type task;
+        value_type task = nullptr;
         while (true) {
             container_.wait_and_pop(task);
             if (task == nullptr) {
@@ -56,9 +56,24 @@ private:
     result_type& result_; 
 };
 
+template <typename Container, bool isPointer = false>
+struct set_done {
+    void operator()(Container& container, std::size_t thread_size) {
+        container.set_done();
+    }
+};
+
+template <typename Container>
+struct set_done<Container, true> {
+    void operator ()(Container& container, std::size_t thread_size) {
+        for (std::size_t i=0; i<thread_size; ++i) {
+            container.push(nullptr);
+        }
+    }
+};
 
 
-template <typename Container, int isPointer = boost::is_pointer<typename Container::value_type>::value >
+template <typename Container, bool isPointer = boost::is_pointer<typename Container::value_type>::value >
 class WorkerThread {
 public:
     typedef typename Container::value_type value_type;
@@ -82,22 +97,22 @@ private:
     std::thread thread_;
 };
 
-template <typename Container, int isPointer = boost::is_pointer<typename Container::value_type>::value >
+template <typename Container, bool isPointer = boost::is_pointer<typename Container::value_type>::value >
 class WorkerThreadGroup {
 public:
     typedef typename Container::value_type value_type;
     typedef typename boost::remove_pointer<value_type>::type::result_type result_type;
-    WorkerThreadGroup() : results_(4), threads_(4) {
+    WorkerThreadGroup(int thread_size) : results_(thread_size), threads_(thread_size) {
         for(size_t i=0; i<threads_.size(); ++i) {
             threads_[i] = std::thread(Worker<Container, isPointer>(container_, results_[i]));
         }
     }
     
-    void submit(typename Container::value_type task) {
+    void submit(value_type task) {
         container_.push(task);
     }
     void join() {
-        container_.set_done();
+        set_done<Container, isPointer>()(container_, threads_.size());
         for(auto& thread : threads_) {
             thread.join();
         }
