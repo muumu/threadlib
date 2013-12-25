@@ -15,7 +15,8 @@ private:
     mutable std::mutex mut;
     std::queue<T> data_queue;
     std::condition_variable data_cond;
-    std::atomic<bool> done_;
+    //std::atomic<bool> done_;
+    bool done_;
 public:
     typedef T value_type;
     lock_based_queue() : done_(false) {}

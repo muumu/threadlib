@@ -42,7 +42,10 @@ public:
 
     BenchMarkTask() {}
     void operator()(result_type& r) {
-        r.set((r.value() + rand()%32) & 255);
+        //for(int i=0; i<1000000; ++i) {
+        for(int i=0; i<1000; ++i) {
+            r.set((r.value() + rand()%32) & 255);
+        }
         ++r.counter;
     }
     static void show(const result_type& r) {
@@ -55,10 +58,9 @@ public:
 
 int main(int argc, char** argv) {
 
-    int loop_size = 1000000;
+    int loop_size = 4;
 
-    BenchMarkTask::result_type result_lb;
-
+    //BenchMarkTask::result_type result_lb;
     WorkerThread<lock_based_queue<BenchMarkTask> > bm_worker_lb;
     //WorkerThread<lock_based_queue<decltype(boost::bind<void>(BenchMarkTask(), boost::ref(result_lb)))> > bm_worker_lb;
     MyTimer timer;
@@ -72,7 +74,7 @@ int main(int argc, char** argv) {
     std::cout << "result: " << bm_worker_lb.getResult().value() << std::endl;
     timer.stop();
 
-    BenchMarkTask::result_type result_lbg;
+    //BenchMarkTask::result_type result_lbg;
     WorkerThreadGroup<lock_based_queue<BenchMarkTask> > bm_worker_lbg;
     //WorkerThread<lock_free_queue<decltype(boost::bind<void>(BenchMarkTask(), boost::ref(result_lf)))> > bm_worker_lf;
     timer.start("lock_based_queue<BenchMarkTask> group");
@@ -86,7 +88,7 @@ int main(int argc, char** argv) {
     timer.stop();
 
 
-    BenchMarkTask::result_type result_lf;
+    //BenchMarkTask::result_type result_lf;
     WorkerThread<lock_free_queue<BenchMarkTask> > bm_worker_lf;
     //WorkerThread<lock_free_queue<decltype(boost::bind<void>(BenchMarkTask(), boost::ref(result_lf)))> > bm_worker_lf;
     timer.start("lock_free_queue<BenchMarkTask>");
@@ -129,6 +131,19 @@ int main(int argc, char** argv) {
     timer.stop();
     std::cout << "result.counter: " << result.counter << std::endl;
     std::cout << "result.value(): " << result.value() << std::endl;
+
+
+    BenchMarkTask::result_type res;
+    std::vector<std::thread> threads(2);
+    timer.start("independent thread");
+    for (auto& thread : threads) {
+        thread = std::thread(boost::bind<void>(BenchMarkTask(), res));
+    }
+    for (auto& thread : threads) {
+        thread.join();
+    }
+    timer.stop();
+    
 
     timer.showResults();
 }

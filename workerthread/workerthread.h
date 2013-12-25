@@ -97,8 +97,8 @@ public:
         container_.push(task);
     }
     void join() {
+        container_.set_done();
         for(auto& thread : threads_) {
-            container_.set_done();
             thread.join();
         }
     }
