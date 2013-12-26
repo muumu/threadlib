@@ -78,4 +78,10 @@ public:
     }
 };
 
+/*
+template <typename T*>
+class lock_based_queue<T*> {
+
+};
+*/
 #endif

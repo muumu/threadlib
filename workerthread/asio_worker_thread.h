@@ -8,18 +8,27 @@
 #include <boost/bind.hpp>
 #include <boost/shared_ptr.hpp>
 
+struct RunnerBase {
+    void operator()(boost::asio::io_service& io_service) {
+        io_service.run();
+    }
+};
+
+
+template <typename Runner>
 class boost_asio_thread_pool {
     boost::asio::io_service& io_service_;
     boost::shared_ptr<boost::asio::io_service::work> work_;
     boost::thread_group group_;
 public:
-    boost_asio_thread_pool(boost::asio::io_service& io_service, std::size_t size)
+    boost_asio_thread_pool(boost::asio::io_service& io_service, Runner runner, std::size_t size)
         : io_service_(io_service)
     {
         work_.reset(new boost::asio::io_service::work(io_service_));
 
         for (std::size_t i = 0; i < size; ++i) {
-            group_.create_thread(boost::bind(&boost::asio::io_service::run, &io_service_));
+            //group_.create_thread(boost::bind(&boost::asio::io_service::run, &io_service_));
+            group_.create_thread(boost::bind<void>(runner, boost::ref(io_service_)));
         }
     }
 

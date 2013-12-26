@@ -57,6 +57,33 @@ public:
 };
 
 
+struct BenchMarkRunner {
+    int seed_;
+public:
+    class result_type {
+        int value_;
+    public:
+        int counter;
+        result_type() : value_(10), counter(0) {}
+        int value() const {
+            return value_;
+        }
+        void set(int v) {
+            value_ = v;
+        }
+    };
+    BenchMarkRunner() {
+        seed_ = rand()%64;
+    }
+    void operator()(boost::asio::io_service& io_service) {
+        std::cout << "start running on: " << boost::this_thread::get_id() << std::endl;
+        io_service.run();
+    }
+private:
+    result_type result_;
+};
+
+
 
 int main(int argc, char** argv) {
 
@@ -134,7 +161,7 @@ int main(int argc, char** argv) {
 
 
     boost::asio::io_service io_service;
-    boost_asio_thread_pool tp(io_service, thread_size);
+    boost_asio_thread_pool<BenchMarkRunner> tp(io_service, BenchMarkRunner(), thread_size);
     BenchMarkTask::result_type result;
 
     timer.start("boost_asio");
