@@ -56,6 +56,55 @@ public:
     }
 };
 
+struct BenchMarkContext {
+    int value;
+    int counter;
+};
+thread_local BenchMarkContext bmc;
+std::atomic<int> total_counter;
+
+class BenchMarkTask2 {
+    int seed_;
+public:
+/*
+    class result_type {
+    public:
+        static thread_local int value;
+        static thread_local int counter;
+    };
+*/
+    //thread_local static int value;
+    //thread_local static int counter;
+
+    BenchMarkTask2() {
+        seed_ = rand()%64;
+    }
+    void operator()() {
+        for(int i=0; i<1000; ++i) {
+            //result_type::value = ((result_type::value + seed_) & 255);
+            bmc.value = ((bmc.value + seed_) & 255);
+        }
+        //++result_type::counter;
+        ++bmc.counter;
+    }
+};
+
+struct BenchMarkInitPolicy {
+    void init() {
+        bmc.value = 1;
+        bmc.counter = 0;
+    }
+};
+
+struct BenchMarkEndPolicy {
+    void end() {
+        //std::cout << "value = " << bmc.value << std::endl;
+        //std::cout << "counter = " << bmc.counter << std::endl;
+        total_counter += bmc.counter;
+    }
+};
+
+
 
 struct BenchMarkRunner {
     int seed_;
@@ -89,6 +138,8 @@ int main(int argc, char** argv) {
 
     int loop_size = 1000000;
     const int thread_size = std::thread::hardware_concurrency();
+
+    std::cout << (boost::is_pointer<void (*)()>::value ? "pointer type" : "non pointer type") << std::endl;
 
     //BenchMarkTask::result_type result_lb;
     WorkerThread<lock_based_queue<BenchMarkTask> > bm_worker_lb;
@@ -127,7 +178,17 @@ int main(int argc, char** argv) {
     std::cout << "result: " << bm_worker_lbpg.getResult().value() << std::endl;
     timer.stop();
 
-
+/*
+    WorkerThreadGroup<lock_based_queue<std::shared_ptr<BenchMarkTask> > > bm_worker_lbspg(thread_size);
+    timer.start("lock_based_queue<std::shared_ptr<BenchMarkTask> > group");
+    for(int i=0; i<loop_size; ++i) {
+        bm_worker_lbspg.submit(std::make_shared<BenchMarkTask>());
+    }
+    bm_worker_lbspg.join();
+    std::cout << "counter: " << bm_worker_lbg.getResult().counter << std::endl;
+    std::cout << "result: " << bm_worker_lbg.getResult().value() << std::endl;
+    timer.stop();
+*/
 
     //BenchMarkTask::result_type result_lf;
     WorkerThread<lock_free_queue<BenchMarkTask> > bm_worker_lf;
@@ -140,7 +201,7 @@ int main(int argc, char** argv) {
     bm_worker_lf.join();
     timer.stop();
 
-
+/*
     WorkerThread<boost_lock_free_queue<BenchMarkTask*> > bm_worker_p;
     timer.start("boost_lock_free_queue<BenchMarkTask*>");
     for(int i=0; i<loop_size; ++i) {
@@ -148,6 +209,7 @@ int main(int argc, char** argv) {
     }
     bm_worker_p.join();
     timer.stop();
+*/
 /*
     WorkerThread<boost_lock_free_queue<BenchMarkTask> > bm_worker_b;
     timer.start();
@@ -159,19 +221,16 @@ int main(int argc, char** argv) {
 */
 
 
+    AsioThreadPool<BenchMarkInitPolicy, BenchMarkEndPolicy> thread_pool(thread_size);
 
-    boost::asio::io_service io_service;
-    boost_asio_thread_pool<BenchMarkRunner> tp(io_service, BenchMarkRunner(), thread_size);
-    BenchMarkTask::result_type result;
-
-    timer.start("boost_asio");
+    timer.start("AsioThreadPool");
     for(int i=0; i<loop_size; ++i) {
-        tp.submit(boost::bind<void>(BenchMarkTask(), boost::ref(result)));
+        thread_pool.post(BenchMarkTask2());
     }
-    tp.join();
+    thread_pool.join();
     timer.stop();
-    std::cout << "result.counter: " << result.counter << std::endl;
-    std::cout << "result.value(): " << result.value() << std::endl;
+    std::cout << "total_counter: " << total_counter << std::endl;
+    //std::cout << "result.value(): " << result.value() << std::endl;
 
 
     BenchMarkTask::result_type res;
