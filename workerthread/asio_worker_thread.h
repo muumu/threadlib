@@ -7,38 +7,41 @@
 #include <boost/thread.hpp>
 #include <boost/bind.hpp>
 #include <boost/shared_ptr.hpp>
+#include <boost/make_shared.hpp>
 
 
 struct VoidInitPolicy {
     void init() {}
 };
 
-struct VoidClosePolicy {
-    void close() {}
+struct VoidEndPolicy {
+    void end() {}
 };
 
 
 template <typename InitPolicy, typename EndPolicy>
-struct Runner : public InitPolicy, EndPolicy {
+struct Runner {
     void operator()(boost::asio::io_service& io_service) {
-        InitPolicy::init();
+        init_policy.init();
         io_service.run();
-        EndPolicy::end();
+        end_policy.end();
     }
+private:
+    InitPolicy init_policy;
+    EndPolicy end_policy;
 };
 
-template <typename InitPolicy = VoidInitPolicy, typename ClosePolicy = VoidClosePolicy>
+template <typename InitPolicy = VoidInitPolicy, typename EndPolicy = VoidEndPolicy>
 class AsioThreadPool {
     boost::asio::io_service io_service_;
     boost::shared_ptr<boost::asio::io_service::work> work_;
     boost::thread_group group_;
-    Runner<InitPolicy, ClosePolicy> runner;
 public:
-    AsioThreadPool(std::size_t size) {
-        work_.reset(new boost::asio::io_service::work(io_service_));
+    AsioThreadPool(std::size_t size) :
+        work_(boost::make_shared<boost::asio::io_service::work>(io_service_))
+    {
         for (std::size_t i = 0; i < size; ++i) {
-            //group_.create_thread(boost::bind(&boost::asio::io_service::run, &io_service_));
-            group_.create_thread(boost::bind<void>(runner, boost::ref(io_service_)));
+            group_.create_thread(boost::bind<void>(Runner<InitPolicy, EndPolicy>(), boost::ref(io_service_)));
         }
     }
 
@@ -48,8 +51,8 @@ public:
     }
 
     template <class T>
-    void post(T task) {
-        io_service_.post(task);
+    void post(T job) {
+        io_service_.post(job);
     }
 
     void join() {

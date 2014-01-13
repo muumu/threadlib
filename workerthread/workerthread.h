@@ -3,178 +3,121 @@
 
 #include <iostream>
 #include <thread>
-#include <boost/lockfree/queue.hpp>
 #include <boost/type_traits.hpp>
+#include "../../lib/util.h"
 
-template <typename T>
-inline void delete_if_needed(T) {}
 
-template <typename T>
-inline void delete_if_needed(T* p) {
-    delete p;
-}
-
-template <typename ReturnType, typename... Args>
-void delete_if_needed(ReturnType (*)(Args... args)) {};
-
-template <typename Functor, typename... Args>
-void exec_functor(Functor f, Args&... args) {
-    f(args...);
+struct JobExecutionPolicyBase {
+    void init() {}
+    void end() {}
+    template <typename T>
+    void execute(T job) {
+        util::exec_functor(job);
+    }
 };
 
-template <typename Functor, typename... Args>
-void exec_functor(Functor* f, Args&... args) {
-    (*f)(args...);
+struct SpinLockWaitPolicy {
+    template <typename Container, typename job_type>
+    bool wait_and_pop(Container& container, job_type& job) {
+        while (!container.try_pop(job)) {
+            if (container.done()) {
+                return false;
+            }
+            usleep(20);
+        }
+        return true;
+    }
+};
+
+struct SignalWaitPolicy {
+    template <typename Container, typename job_type>
+    bool wait_and_pop(Container& container, job_type& job) {
+        if (!container.wait_and_pop(job)) {
+            return false;
+        }
+        return true;
+    }
 };
 
 
-
-template <typename Container>
+template <template<class> class Container, typename JobExecutionPolicy,
+    typename WaitPolicy = SpinLockWaitPolicy>
 class Worker {
 public:
-    typedef typename Container::value_type value_type;
-    typedef typename boost::remove_pointer<value_type>::type::result_type result_type;
-    Worker(Container& container, result_type& result) : container_(container), result_(result) {}
+    typedef typename JobExecutionPolicy::job_type job_type;
+
+    Worker(Container<job_type>& container) : container_(container) {}
+
     void operator()() {
-        typename Container::value_type task;
+        job_exec_policy.init();
+        job_type job{};
         while (true) {
-            if (!container_.wait_and_pop(task)) {
+            if (!wait_policy.wait_and_pop(container_, job)) {
                 break;
             }
-            exec_functor(task, result_);
-            delete_if_needed(task);
+            job_exec_policy.execute(job);
+            util::delete_if_needed(job);
         }
-        while (container_.try_pop(task)) {
-            exec_functor(task, result_);
-            delete_if_needed(task);
+        while (container_.try_pop(job)) {
+            job_exec_policy.execute(job);
+            util::delete_if_needed(job);
         }
+        job_exec_policy.end();
     }
+
 private:
-    Container& container_;
-    result_type& result_;
+    Container<job_type>& container_;
+    JobExecutionPolicy job_exec_policy;
+    WaitPolicy wait_policy;
 };
 
-/*
-template <typename Container>
-class Worker<Container, true> {
+
+template <template<class> class Container, typename JobExecutionPolicy = JobExecutionPolicyBase>
+class WorkerThreadBase {
 public:
-    typedef typename Container::value_type value_type;
-    typedef typename boost::remove_pointer<value_type>::type::result_type result_type;
-    Worker(Container& container, result_type& result) :
-        container_(container), result_(result) {
-    }
-    void operator()() {
-        value_type task = nullptr;
-        while (true) {
-            container_.wait_and_pop(task);
-            if (task == nullptr) {
-                break;
-            }
-            (*task)(result_);
-            delete task;
-        }
-    }
-private:
-    Container& container_;
-    result_type& result_; 
-};
-
-template <typename Container>
-class Worker<Container, true> {
-public:
-    typedef typename Container::value_type value_type;
-    typedef typename boost::remove_pointer<value_type>::type::result_type result_type;
-    Worker(Container& container, result_type& result) :
-        container_(container), result_(result) {
-    }
-    void operator()() {
-        typename Container::value_type task;
-        while (true) {
-            if (!container_.wait_and_pop(task)) {
-                break;
-            }
-            (*task)(result_);
-            delete task;
-        }
-        while (container_.try_pop(task)) {
-            (*task)(result_);
-            delete task;
-        }
-    }
-private:
-    Container& container_;
-    result_type& result_; 
-};
-
-
-template <typename Container, bool isPointer = false>
-struct set_done {
-    void operator()(Container& container, std::size_t thread_size) {
-        container.set_done();
-    }
-};
-
-template <typename Container>
-struct set_done<Container, true> {
-    void operator ()(Container& container, std::size_t thread_size) {
-        for (std::size_t i=0; i<thread_size; ++i) {
-            container.push(nullptr);
-        }
-    }
-};
-*/
-
-template <typename Container>
-class WorkerThread {
-public:
-    typedef typename Container::value_type value_type;
-    typedef typename boost::remove_pointer<value_type>::type::result_type result_type;
-    WorkerThread() : thread_(Worker<Container>(container_, result_)) {}
+    typedef Container<typename JobExecutionPolicy::job_type> container_type;
+    typedef typename container_type::value_type value_type;
     
-    void submit(typename Container::value_type task) {
-        container_.push(task);
+    void post(value_type job) {
+        container_.push(job);
     }
+
+protected:
+    container_type container_;
+};
+
+
+template <template<class> class Container, typename JobExecutionPolicy = JobExecutionPolicyBase>
+class WorkerThread : public WorkerThreadBase<Container, JobExecutionPolicy> {
+public:
+    WorkerThread() : thread_(Worker<Container, JobExecutionPolicy>(this->container_)) {}
+    
     void join() {
-        container_.set_done();
+        this->container_.set_done();
         thread_.join();
     }
-    result_type& getResult() {
-        return result_;
-    }
 
 private:
-    Container container_;
-    result_type result_;
     std::thread thread_;
 };
 
-template <typename Container>
-class WorkerThreadGroup {
+template <template<class> class Container, typename JobExecutionPolicy = JobExecutionPolicyBase>
+class WorkerThreadGroup : public WorkerThreadBase<Container, JobExecutionPolicy> {
 public:
-    typedef typename Container::value_type value_type;
-    typedef typename boost::remove_pointer<value_type>::type::result_type result_type;
-    WorkerThreadGroup(int thread_size = 1) : results_(thread_size), threads_(thread_size) {
-        for(size_t i=0; i<threads_.size(); ++i) {
-            threads_[i] = std::thread(Worker<Container>(container_, results_[i]));
+    WorkerThreadGroup(const int thread_size = 1) : threads_(thread_size) {
+        for(size_t i=0; i<thread_size; ++i) {
+            threads_[i] = std::thread(Worker<Container, JobExecutionPolicy>(this->container_));
         }
     }
-    
-    void submit(value_type task) {
-        container_.push(task);
-    }
+
     void join() {
-        container_.set_done();
+        this->container_.set_done();
         for(auto& thread : threads_) {
             thread.join();
         }
     }
-    result_type& getResult() {
-        return results_[0];
-    }
 
 private:
-    Container container_;
-    std::vector<result_type> results_;
     std::vector<std::thread> threads_;
 };
 
